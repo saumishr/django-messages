@@ -1,4 +1,6 @@
-from django.template import Library, Node, TemplateSyntaxError
+from django.template import Library, Node, TemplateSyntaxError, Variable
+from django.contrib.contenttypes.models import ContentType
+from django.core.urlresolvers import reverse
 
 class InboxOutput(Node):
     def __init__(self, varname=None):
@@ -43,3 +45,20 @@ def do_print_inbox_count(parser, token):
 
 register = Library()     
 register.tag('inbox_count', do_print_inbox_count)
+
+@register.tag
+def report_spam_url(parser, token): 
+    bits = token.split_contents()
+    if len(bits) != 2:
+        raise TemplateSyntaxError("Accepted format {% vendor_follower_info_url [instance] %}")
+    else:
+        return ReportSpam(*bits[1:])
+
+class ReportSpam(Node):
+    def __init__(self, obj):
+        self.obj = Variable(obj)
+
+    def render(self, context):
+        obj_instance = self.obj.resolve(context)
+        content_type = ContentType.objects.get_for_model(obj_instance).pk
+        return reverse('report_spam', kwargs={'content_type_id': content_type, 'object_id': obj_instance.pk })

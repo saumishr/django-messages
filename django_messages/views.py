@@ -1,5 +1,5 @@
 import datetime
-from django.http import Http404, HttpResponseRedirect
+from django.http import Http404, HttpResponseRedirect, HttpResponse
 from django.shortcuts import render_to_response, get_object_or_404
 from django.template import RequestContext
 from django.contrib import messages
@@ -11,6 +11,9 @@ from django.conf import settings
 from django_messages.models import Message
 from django_messages.forms import ComposeForm
 from django_messages.utils import format_quote, get_user_model, get_username_field
+from django import forms
+from django_messages.models import Message
+from django.contrib.contenttypes.models import ContentType
 
 User = get_user_model()
 
@@ -209,3 +212,30 @@ def view(request, message_id, template_name='django_messages/view.html'):
         'message': message,
     }, context_instance=RequestContext(request))
 view = login_required(view)
+
+def report_spam(request, content_type_id, object_id):
+    """
+    Sends message and email to superuser regarding the object being flagged as spam.
+    """
+    ctype = get_object_or_404(ContentType, pk=content_type_id)
+    object = get_object_or_404(ctype.model_class(), pk=object_id)
+    sender = request.user
+    r = User.objects.get(is_superuser=True)
+    subject = u"Spam Report"
+    body = str(request.build_absolute_uri(object.get_absolute_url()))
+    msg = Message(
+            sender = sender,
+            recipient = r,
+            subject = subject,
+            body = body,
+    )
+    msg.save()
+    if notification:
+        notification.send([sender], "messages_sent", {'message': msg,})
+        notification.send([r], "messages_received", {'message': msg,})
+
+    if request.is_ajax():
+        return HttpResponse('ok')
+    else:
+        return render_to_response('django_messages/report_spam.html', {}, RequestContext(request))
+report_spam = login_required(report_spam)
